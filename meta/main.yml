@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: ferm
+  author: Pierre Coimbra
+  description: Ansible role for simply configuring ferm
+  license: GPLv3
+  min_ansible_version: 2.1
+  platforms:
+  - name: debian
+    versions:
+    - buster
+  galaxy_tags:
+    - tls
+    - openssl
+    - certificates
+dependencies:
+  - pyOpenSSL

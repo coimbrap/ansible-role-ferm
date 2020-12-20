@@ -1,0 +1,86 @@
+{% for port in define | default([]) %}
+{% if port.type is defined and port.type == 'function' %}
+@def &{{ port.name }}(${{ port.param | join(', $')}}) = {
+  {{ port.value | join('\n  ') }}
+}
+{% elif port.type is defined and port.type == 'list' %}
+@def ${{ port.name }} = ({{ port.value | join(' ') }});
+{% else %}
+@def ${{ port.name }} = {{ port.value }};
+{% endif %}
+{% endfor %}
+
+# Default chain policy
+chain INPUT policy {{ ferm_default_policy_input | default('DROP') }};
+chain OUTPUT policy {{ ferm_default_policy_output | default('ACCEPT') }};
+chain FORWARD policy {{ ferm_default_policy_forward | default('DROP') }};
+
+chain (INPUT OUTPUT FORWARD) {
+  mod conntrack ctstate INVALID DROP;
+  mod conntrack ctstate (ESTABLISHED RELATED) ACCEPT;
+}
+
+{% if ipv4 is defined and ipv4 %}
+domain ip table filter {
+    chain INPUT {
+      interface lo ACCEPT;
+{% if icmp_limit is defined and icmp_limit %}
+      # Limit incoming ICMP traffic per source
+      protocol icmp @subchain "ICMP-flood" {
+        mod hashlimit hashlimit {{ icmp_limit }}
+            hashlimit-burst {{ icmp_burst }}
+            hashlimit-mode srcip
+            hashlimit-name ICMP-flood
+            hashlimit-htable-expire 3600000
+        ACCEPT;
+        DROP;
+      }
+{% endif %}
+{% if syn_limit is defined and syn_limit %}
+      # SYN-flood protection per source
+      protocol tcp syn @subchain "SYN-flood" {
+        mod hashlimit hashlimit {{ syn_limit }}
+            hashlimit-burst {{ syn_burst }}
+            hashlimit-mode srcip
+            hashlimit-name SYN-flood
+            hashlimit-htable-expire 3600000
+        RETURN;
+        DROP;
+      }
+{% endif %}
+{% for rule in input_v4 | default([]) %}
+      {% if rule.interface is defined %}interface {{ rule.interface }} {% endif %}{% if rule.outerface is defined %}outerface {{ rule.outerface }} {% endif %}{% if rule.proto is defined %}proto {{ rule.proto }} {% endif %}{% if rule.icmp_type is defined %}icmp-type {{ rule.icmp_type }} {% endif %}{% if rule.sport is defined %}sport ({{ rule.sport | join(' ') }}) {% endif %}{% if rule.dport is defined %}dport ({{ rule.dport | join(' ') }}) {% endif %}{{ rule.policy | default('ACCEPT') }};
+{% endfor %}
+    }
+{% if output_v4 is defined and output_v4|length %}
+    chain OUTPUT {
+{% for rule in output_v4 | default([]) %}
+      {% if rule.interface is defined %}interface {{ rule.interface }} {% endif %}{% if rule.outerface is defined %}outerface {{ rule.outerface }} {% endif %}{% if rule.proto is defined %}proto {{ rule.proto }} {% endif %}{% if rule.icmp_type is defined %}icmp-type {{ rule.icmp_type }} {% endif %}{% if rule.sport is defined %}sport ({{ rule.sport | join(' ') }}) {% endif %}{% if rule.dport is defined %}dport ({{ rule.dport | join(' ') }}) {% endif %}{{ rule.policy | default('ACCEPT')}};
+{% endfor %}
+    }
+{% endif %}
+{% if forward_v4 is defined and forward_v4|length %}
+    chain FORWARD {
+{% for rule in forward_v4 | default([]) %}
+      {% if rule.interface is defined %}interface {{ rule.interface }} {% endif %}{% if rule.outerface is defined %}outerface {{ rule.outerface }} {% endif %}{% if rule.proto is defined %}proto {{ rule.proto }} {% endif %}{% if rule.icmp_type is defined %}icmp-type {{ rule.icmp_type }} {% endif %}{% if rule.sport is defined %}sport ({{ rule.sport | join(' ') }}) {% endif %}{% if rule.dport is defined %}dport ({{ rule.dport | join(' ') }}) {% endif %}{{ rule.policy | default('ACCEPT')}};
+{% endfor %}
+    }
+{% endif %}
+}
+{% endif %}
+
+{% if nat is defined and nat %}
+table nat {
+{% if nat_postrouting is defined and nat_postrouting|length %}
+    chain POSTROUTING {
+{% for rule in nat_postrouting | default([]) %}
+      {% if rule.saddr is defined %}saddr {{ rule.saddr }} {% endif %}{% if rule.outerface is defined %}outerface {{ rule.outerface }} {% endif %}{% if rule.to is defined %}SNAT to {{ rule.to }}{% endif %};
+{% endfor %}
+    }
+{% endif %}
+}
+{% endif %}
+
+{% for function in functions | default([]) %}
+&{{ function.name }}({{ function.args | join(', ') }});
+{% endfor %}

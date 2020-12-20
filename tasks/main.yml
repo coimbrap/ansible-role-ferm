@@ -1,0 +1,22 @@
+---
+# tasks file for simple_ferm
+- name: install | installing Ferm Packages
+  apt:
+    state: present
+    update_cache: yes
+    pkg: "{{ ferm_packages }}"
+
+
+- name: configuration | update file
+  template:
+    src: "{{ ferm_conf_template }}"
+    dest: /etc/ferm/ferm.conf
+    owner: root
+    group: root
+    mode: 0644
+
+- name: "launch | service"
+  service:
+    name: "{{ ferm_services }}"
+    enabled: "{{ ferm_service_enabled }}"
+    state: "{{ ferm_service_state }}"
